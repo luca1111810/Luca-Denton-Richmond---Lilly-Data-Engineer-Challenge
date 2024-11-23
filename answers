@@ -1,1 +1,136 @@
+Question 1:
 
+SELECT avg(home_score + away_score) AS "Average number of goals scored" FROM results
+WHERE date >= "1900-01-01" AND date < "2000-01-01"
+
+
+Question 2:
+
+SELECT winner AS "Country", count(*) AS "Number of shootout wins" FROM shootouts
+GROUP BY winner
+ORDER BY winner ASC
+
+
+Question 3:
+
+I identified that there are a few instances of the same team playing more than once on the same day.
+As a result, the tables must be grouped by date, home_team and away_team.
+
+WITH joined_table AS(
+	SELECT results.date, results.home_team, results.away_team, results.home_score,
+	results.away_score, results.tournament, results.city, results.country, results.neutral,
+	goalscorers.team, goalscorers.scorer, goalscorers.minute, goalscorers.own_goal,
+	shootouts.winner, shootouts.first_shooter FROM results
+
+	JOIN goalscorers ON results.date = goalscorers.date
+	AND results.home_team = goalscorers.home_team
+	AND results.away_team = goalscorers.away_team
+
+	LEFT JOIN shootouts ON results.date = shootouts.date
+	AND results.home_team = shootouts.home_team
+	AND results.away_team = shootouts.away_team
+)
+
+SELECT * FROM joined_table
+
+
+Question 4:
+
+SELECT shootouts.winner AS "Shootout winners after 1-1 draw" FROM results
+JOIN shootouts ON results.date = shootouts.date
+AND results.home_team = shootouts.home_team
+AND results.away_team = shootouts.away_team
+WHERE results.home_score = 1 AND results.away_score = 1
+
+
+Question 5:
+
+WITH player_goals AS(
+	SELECT results.tournament, goalscorers.scorer, count(*) AS goals_per_player FROM goalscorers
+	JOIN results ON goalscorers.date = results.date
+	AND goalscorers.home_team = results.home_team
+	AND goalscorers.away_team = results.away_team
+	WHERE goalscorers.own_goal = "FALSE"
+	GROUP BY results.tournament, goalscorers.scorer
+	ORDER BY results.tournament ASC
+),
+
+top_scorers AS(
+	SELECT player_goals.scorer AS top_scorer,  player_goals.tournament, MAX(player_goals.goals_per_player) AS goals_scored FROM player_goals
+	GROUP BY player_goals.tournament
+),
+
+total_goals_per_tournament AS(
+	SELECT results.tournament, count(goalscorers.scorer) AS total_goals FROM goalscorers
+	JOIN results ON goalscorers.date = results.date
+	AND goalscorers.home_team = results.home_team
+	AND goalscorers.away_team = results.away_team
+	GROUP BY results.tournament
+)
+
+SELECT total_goals_per_tournament.tournament As "Tournament", top_scorers.top_scorer AS "Top scorer", top_scorers.goals_scored AS "Goals scored", total_goals_per_tournament.total_goals "Total tournament goals", (top_scorers.goals_scored * 100.0)/total_goals_per_tournament.total_goals AS "Percentage of goals scored by top scorer" FROM total_goals_per_tournament
+JOIN top_scorers ON top_scorers.tournament = total_goals_per_tournament.tournament
+
+
+Additional Questions:
+
+Question 1:
+
+WITH joined_table AS(
+	SELECT results.date, results.home_team, results.away_team, results.home_score,
+	results.away_score, results.tournament, results.city, results.country, results.neutral,
+	goalscorers.team, goalscorers.scorer, goalscorers.minute, goalscorers.own_goal,
+	shootouts.winner, shootouts.first_shooter FROM results
+
+	JOIN goalscorers ON results.date = goalscorers.date
+	AND results.home_team = goalscorers.home_team
+	AND results.away_team = goalscorers.away_team
+
+	LEFT JOIN shootouts ON results.date = shootouts.date
+	AND results.home_team = shootouts.home_team
+	AND results.away_team = shootouts.away_team
+)
+
+
+SELECT *,
+CASE
+	WHEN date ISNULL OR home_team ISNULL OR away_team ISNULL OR tournament ISNULL OR city ISNULL OR country ISNULL OR neutral ISNULL OR team ISNULL OR scorer ISNULL OR minute ISNULL OR own_goal ISNULL THEN "NULL entry"
+	WHEN first_shooter ISNULL AND winner NOTNULL THEN "NULL first shooter"
+	WHEN country = away_team THEN "Wrong home team"
+	WHEN home_score < 0 OR away_score < 0 THEN "Invalid score"
+	WHEN minute > 200 OR minute < 0 THEN "Invalid minute"
+	WHEN neutral = "TRUE" AND home_team = country THEN "Invalid neutral value"
+	ELSE "None"
+END AS "Data quality issues"
+FROM joined_table
+
+
+Question 2:
+
+UPDATE results
+SET home_team = "Unknown"
+WHERE home_team ISNULL;
+
+UPDATE results
+SET away_team = "Unknown"
+WHERE away_team ISNULL;
+
+UPDATE results
+SET home_score = 0
+WHERE home_score < 0;
+
+UPDATE results
+SET away_score = "Unknown"
+WHERE away_score < 0;
+
+UPDATE shootouts
+SET first_shooter = "Unknown"
+WHERE first_shooter ISNULL;
+
+UPDATE goalscorers
+SET minute = "Unknown"
+WHERE minute > 200 OR minute < 0;
+
+UPDATE results
+SET country = home_team
+WHERE neutral = "FALSE";
